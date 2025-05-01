@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Book Recommender System</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+
+<body>
+    <div id="app">
+
+          <!-- User Details Form -->
+          <div v-if="!age || !location || !selectedBooks.length">
+            <div class="container">
+                <div class="box">
+                    <h2 class="title is-4">Welcome to Book Recommender</h2>
+                    <div class="field">
+                        <label class="label">Your Age</label>
+                        <div class="control">
+                            <input class="input" type="number" min="1" max="100" v-model.number="age"
+                                placeholder="Enter your age" required>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label">Your Location</label>
+                        <div class="control">
+                            <input class="input" type="text" v-model.trim="location"
+                                placeholder="Enter your city/country" required>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <div class="control">
+                            <button class="button is-primary is-fullwidth" :class="{'is-loading': loadingInitial}"
+                                :disabled="!age || !location" @click="getInitialSuggestions">
+                                Get Book Suggestions
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Section -->
+        <div v-if="!selectedBooks.length" class="container mb-4">
+            <div class="box">
+                <h2 class="title is-4">Search for Books</h2>
+                <!-- Search Bar -->
+                <div class="field has-addons mb-5">
+                    <div class="control is-expanded">
+                        <input 
+                            class="input" 
+                            type="text" 
+                            v-model="searchQuery" 
+                            placeholder="Search for a book you like..."
+                        >
+                    </div>
+                    <div class="control">
+                        <button 
+                            class="button is-primary" 
+                            :class="{'is-loading': loadingSearch}"
+                            @click="searchBooks"
+                        >
+                            Search
+                        </button>
+                    </div>
+                </div>
+
+                 <!-- No Results Notification -->
+               <!-- No Results Notification -->
+                <div v-if="searchResults.length === 0 && hasSearched" class="notification is-danger">
+                    No books found. Please try another search.
+                </div>
+
+                <!-- Search Results -->
+                <div v-if="searchResults.length">
+                    <div class="notification is-info is-light">
+                        <h2 class="has-text-weight-bold">Search Results</h2>
+                        <p>Click thumbs up to see similar books</p>
+                    </div>
+                    <div class="columns is-mobile is-multiline">
+                        <div v-for="book in searchResults" 
+                            :key="book.itemId"
+                            class="column is-3-fullhd is-3-desktop is-3-tablet is-6-mobile">
+                            <div class="card">
+                                <div class="card-image">
+                                    <figure class="image is-4by3">
+                                        <img :src="book['Image-URL-M'] || 'https://placehold.co/480x640?text=No+Cover'"
+                                            :alt="book['Book-Title']">
+                                    </figure>
+                                </div>
+
+                                <div class="card-content p-2">
+                                    <div class="media">
+                                        <div class="media-content">
+                                            <p class="is-size-7 has-text-weight-bold">[[ book['Book-Title'] ]]</p>
+                                            <p class="is-size-7">[[ book['Book-Author'] ]]</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card-footer p-2">
+                                    <button class="button is-small"
+                                        :class="{'is-success': !isBookLiked(book.itemId), 'is-static': isBookLiked(book.itemId)}"
+                                        :disabled="isBookLiked(book.itemId)"
+                                        @click="likeBook(book['Book-Description'], book.itemId)">
+                                        <span class="icon">
+                                            <i :class="{'fa fa-thumbs-up': !isBookLiked(book.itemId), 'fa-check': isBookLiked(book.itemId)}"></i>
+                                        </span>
+                                    </button>
+                                    <button class="button is-small is-danger" @click="dislikeBook(book)">
+                                        <span class="icon">
+                                            <i class="fa fa-thumbs-down"></i>
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Initial Suggestions -->
+        <div v-if="age && location && !recommendations.length">
+            <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
+                <div class="navbar-brand">
+                    <div class="navbar-item">
+                        <span class="icon-text">
+                            <span class="icon">
+                                <i class="fa fa-book"></i>
+                            </span>
+                            <span class="title is-5">Rate 10 Books to Get More Recommendations</span>
+                        </span>
+                    </div>
+                </div>
+            </nav>
+
+            <section class="section">
+                <div class="container">
+                    <div class="notification is-info is-light">
+                        <button class="delete" @click="resetAll"></button>
+                        Based on users in a similar age group and location
+                    </div>
+
+                    <div class="columns is-mobile is-multiline">
+                        <div v-for="book in selectedBooks" :key="book.itemId"
+                            class="column is-3-fullhd is-3-desktop is-3-tablet is-6-mobile">
+                            <div class="card">
+                                <div class="card-image">
+                                    <figure class="image is-4by3">
+                                        <img :src="book['Image-URL-M'] || 'https://placehold.co/480x640?text=No+Cover'"
+                                            :alt="book['Book-Title']">
+                                    </figure>
+                                </div>
+
+                                <div class="card-content p-2">
+                                    <div class="media">
+                                        <div class="media-content">
+                                            <p class="is-size-7 has-text-weight-bold">[[ book['Book-Title'] ]]</p>
+                                            <p class="is-size-7">[[ book['Book-Author'] ]]</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card-footer p-2">
+                                    <div class="stars">
+                                        <span v-for="rate in 10" :key="rate"
+                                            :class="['star', getRating(book.itemId) >= rate ? 'has-text-danger' : '']"
+                                            @click="updateRating(book.itemId, rate)">
+                                            <i class="fa fa-star"></i>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="has-text-centered mt-5">
+                        <button class="button is-success is-medium" :class="{'is-loading': loadingRecommendations}"
+                            :disabled="ratingsCount < 10" @click="getRecommendations">
+                            [[ ratingsCount ]]/10 Rated - Get More Personalized Recommendations!
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        
+
+        <!-- Recommendations -->
+        <div v-if="recommendations.length">
+            <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
+                <div class="navbar-brand">
+                    <div class="navbar-item">
+                        <span class="icon-text">
+                            <span class="icon">
+                                <i class="fa fa-star"></i>
+                            </span>
+                            <span class="title is-5">Personalized Recommendations</span>
+                        </span>
+                    </div>
+                    <div class="navbar-item">
+                        <button class="button is-danger" @click="resetAll">
+                            <span class="icon">
+                                <i class="fa fa-redo"></i>
+                            </span>
+                            <span>Start Over</span>
+                        </button>
+                    </div>
+                </div>
+            </nav>
+
+            <section class="section">
+                <div class="container">
+                    <div class="notification is-info is-light">
+                        <h2 class="has-text-weight-bold"> Recommended books </h2>
+                        <p> Similar users have liked these books </p>
+                    </div>
+                    <div class="columns is-mobile is-multiline">
+                        <div v-for="book in filteredRecommendations" :key="book.itemId"
+                            class="column is-3-fullhd is-3-desktop is-3-tablet is-6-mobile">
+                            <div class="card">
+                                <div class="card-image">
+                                    <figure class="image is-4by3">
+                                        <img :src="book['Image-URL-M'] || 'https://placehold.co/480x640?text=No+Cover'"
+                                            :alt="book['Book-Title']">
+                                    </figure>
+                                </div>
+
+                                <div class="card-content p-2">
+                                    <div class="media">
+                                        <div class="media-content">
+                                            <p class="is-size-7 has-text-weight-bold">[[ book['Book-Title'] ]]</p>
+                                            <p class="is-size-7">[[ book['Book-Author'] ]]</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card-footer p-2">
+                                    <button class="button is-small"
+                                        :class="{'is-success': !isBookLiked(book.itemId), 'is-static': isBookLiked(book.itemId)}"
+                                        :disabled="isBookLiked(book.itemId)"
+                                        @click="likeBook(book['Book-Description'], book['itemId'])">
+                                        <span class="icon">
+                                            <i
+                                                :class="{'fa fa-thumbs-up': !isBookLiked(book.itemId), 'fa-check': isBookLiked(book.itemId)}"></i>
+                                        </span>
+                                    </button>
+                                    <button class="button is-small is-danger" @click="dislikeBook(book)">
+                                        <span class="icon">
+                                            <i class="fa fa-thumbs-down"></i>
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            
+
+            <!-- Disliked Books Section (debug view) -->
+            <!-- <section class="section" v-if="dislikedBooks.length > 0">
+                <div class="container">
+                    <div class="notification is-warning is-light">
+                        <h2 class="has-text-weight-bold"> Disliked Books (Debug View) </h2>
+                        <p> These books and their similar books won't be shown in recommendations </p>
+                    </div>
+                    <div class="columns is-mobile is-multiline">
+                        <div v-for="(item, index) in dislikedBooks" :key="index" class="column is-12">
+                            <div class="box">
+                                <h3 class="title is-6">Disliked: [[ item.book['Book-Title'] ]]</h3>
+                                <p class="subtitle is-7">Similar books that are also hidden:</p>
+                                <div class="tags">
+                                    <span v-for="similar in item.similarBooks" :key="similar.itemId" class="tag is-light">
+                                        [[ similar['Book-Title'] ]]
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section> -->
+
+        </div>
+
+        <!-- Similar Books Section (shown when a book is liked) -->
+        <section class="section" v-if="similarBooks.length">
+            <div class="container">
+                <div class="notification is-info is-light">
+                    <h2 class="has-text-weight-bold"> Books similar to ones you have liked </h2>
+                    <p> You might also enjoy these similar books </p>
+                </div>
+                <div class="columns is-mobile is-multiline">
+                    <div v-for="book in filteredSimilarBooks" :key="book.itemId"
+                        class="column is-3-fullhd is-3-desktop is-3-tablet is-6-mobile">
+                        <div class="card">
+                            <div class="card-image">
+                                <figure class="image is-4by3">
+                                    <img :src="book['Image-URL-M'] || 'https://placehold.co/480x640?text=No+Cover'"
+                                        :alt="book['Book-Title']">
+                                </figure>
+                            </div>
+
+                            <div class="card-content p-2">
+                                <div class="media">
+                                    <div class="media-content">
+                                        <p class="is-size-7 has-text-weight-bold">[[ book['Book-Title'] ]]</p>
+                                        <p class="is-size-7">[[ book['Book-Author'] ]]</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card-footer p-2">
+                                <button class="button is-small"
+                                    :class="{'is-success': !isBookLiked(book.itemId), 'is-static': isBookLiked(book.itemId)}"
+                                    :disabled="isBookLiked(book.itemId)"
+                                    @click="likeBook(book['Book-Description'], book['itemId'])">
+                                    <span class="icon">
+                                        <i
+                                            :class="{'fa fa-thumbs-up': !isBookLiked(book.itemId), 'fa-check': isBookLiked(book.itemId)}"></i>
+                                    </span>
+                                </button>
+                                <button class="button is-small is-danger" @click="dislikeBook(book)">
+                                    <span class="icon">
+                                        <i class="fa fa-thumbs-down"></i>
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+         <!-- Liked Books Section (shown when a book is liked) -->
+         <section class="section" v-if="likedBooks.length">
+            <div class="container">
+                <div class="notification is-info is-light">
+                    <h2 class="has-text-weight-bold"> Books you have liked </h2>
+                </div>
+                <div class="columns is-mobile is-multiline">
+                    <div v-for="book in likedBooks" :key="book.itemId"
+                        class="column is-3-fullhd is-3-desktop is-3-tablet is-6-mobile">
+                        <div class="card">
+                            <div class="card-image">
+                                <figure class="image is-4by3">
+                                    <img :src="book['Image-URL-M'] || 'https://placehold.co/480x640?text=No+Cover'"
+                                        :alt="book['Book-Title']">
+                                </figure>
+                            </div>
+
+                            <div class="card-content p-2">
+                                <div class="media">
+                                    <div class="media-content">
+                                        <p class="is-size-7 has-text-weight-bold">[[ book['Book-Title'] ]]</p>
+                                        <p class="is-size-7">[[ book['Book-Author'] ]]</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- Evaluation -->
+        <button @click="startEvaluation" v-if="likedBooks.length > 0 && !showEvaluation" class="evaluation-btn">
+            System Evaluation
+        </button>
+        
+        <div v-if="showEvaluation" class="evaluation-section">
+            <h3>Please rate your liked books (1-10 stars)</h3>
+            
+            <div v-for="book in likedBooks" :key="book.itemId" class="evaluation-item">
+                <h4>[[ book['Book-Title'] ]]</h4>
+                <div class="rating-stars">
+                    <span v-for="star in 10" :key="star" 
+                          @click="updateEvaluationRating(book.itemId, star)"
+                          :class="{ 'active': getEvaluationRating(book.itemId) >= star }">
+                        ★
+                    </span>
+                </div>
+            </div>
+            
+            <button @click="submitEvaluation" :disabled="loadingEvaluation" class="submit-evaluation">
+                [[ loadingEvaluation ? 'Calculating...' : 'Submit Evaluation' ]]
+            </button>
+            
+            <!-- <div v-if="evaluationMetrics" class="metrics-results">
+                <h4>Evaluation Results:</h4>
+                <p>RMSE: [[ evaluationMetrics.rmse.toFixed(2) ]]</p>
+                <p>MAE: [[ evaluationMetrics.mae.toFixed(2) ]]</p>
+            </div> -->
+            <div v-if="evaluationMetrics" class="metrics-results">
+                <h4>Evaluation Results:</h4>
+                <div class="knn-results">
+                    <h5>KNN with Means:</h5>
+                    <p>RMSE: [[ evaluationMetrics.knn.rmse.toFixed(2) ]]</p>
+                    <p>MAE: [[ evaluationMetrics.knn.mae.toFixed(2) ]]</p>
+                </div>
+                <div class="hybrid-results">
+                    <h5>Hybrid (KNN + Content-Based):</h5>
+                    <p>RMSE: [[ evaluationMetrics.hybrid.rmse.toFixed(2) ]]</p>
+                    <p>MAE: [[ evaluationMetrics.hybrid.mae.toFixed(2) ]]</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { createApp, ref, computed, onMounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js'
+
+        const app = createApp({
+            setup() {
+                const age = ref(null)
+                const location = ref('')
+                const selectedBooks = ref([])
+                const recommendations = ref([])
+                const userRatings = ref({})
+                const loadingInitial = ref(false)
+                const loadingRecommendations = ref(false)
+                const loadingSimilarBooks = ref(false)
+                const similarBooks = ref([])
+                const likedBooks = ref([])
+                const dislikedBooks = ref([])
+                // added for system evaluation
+                const showEvaluation = ref(false)
+                const evaluationRatings = ref({})
+                const evaluationMetrics = ref(null)
+                const loadingEvaluation = ref(false)
+                const searchQuery = ref('')
+                const searchResults = ref([])
+                const loadingSearch = ref(false)
+                const hasSearched = ref(false);
+
+                const ratingsCount = computed(() => Object.keys(userRatings.value).length)
+
+                const isBookLiked = computed(() => {
+                    return (itemId) => likedBooks.value.some(book => book.itemId === itemId);
+                });
+
+                const excludedItemIds = computed(() => {
+                    const ids = new Set()
+                    dislikedBooks.value.forEach(item => {
+                        ids.add(item.book.itemId)
+                        item.similarBooks.forEach(similar => ids.add(similar.itemId))
+                    })
+                    return Array.from(ids)
+                })
+
+                // Filter recommendations to exclude disliked books and their similar books
+                const filteredRecommendations = computed(() => {
+                    return recommendations.value.filter(book => 
+                        !excludedItemIds.value.includes(book.itemId)
+                    )
+                })
+
+                // Filter similar books to exclude disliked books and their similar books
+                const filteredSimilarBooks = computed(() => {
+                    return similarBooks.value.filter(book => 
+                        !excludedItemIds.value.includes(book.itemId)
+                    )
+                })
+
+                async function getInitialSuggestions() {
+                    try {
+                        loadingInitial.value = true
+                        const response = await fetch('/api/initial-suggestions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ age: age.value, location: location.value })
+                        })
+                        if (!response.ok) throw new Error('Failed to get suggestions')
+                        selectedBooks.value = await response.json()
+                    } catch (error) {
+                        alert(error.message)
+                    } finally {
+                        loadingInitial.value = false
+                    }
+                }
+
+                async function getRecommendations() {
+                    try {
+                        loadingRecommendations.value = true
+                        const ratingsArray = Object.entries(userRatings.value).map(([itemId, rating]) => ({
+                            userId: 278859,
+                            itemId: parseInt(itemId),
+                            rating: rating
+                        }))
+                        const response = await fetch('/api/recommendations', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ratings: ratingsArray })
+                        })
+                        if (!response.ok) throw new Error('Failed to get recommendations')
+                        recommendations.value = await response.json()
+                    } catch (error) {
+                        alert(error.message)
+                    } finally {
+                        loadingRecommendations.value = false
+                    }
+                }
+
+                function updateRating(itemId, rating) {
+                    if (userRatings.value[itemId] === rating) {
+                        delete userRatings.value[itemId]
+                    } else {
+                        userRatings.value[itemId] = rating
+                    }
+                }
+
+                function getRating(itemId) {
+                    return userRatings.value[itemId] || 0
+                }
+
+                function resetAll() {
+                    age.value = null
+                    location.value = ''
+                    selectedBooks.value = []
+                    recommendations.value = []
+                    userRatings.value = {}
+                    similarBooks.value = []
+                    likedBooks.value = []
+                }
+
+                async function likeBook(bookDescription, itemId) {
+                    try {
+                        loadingSimilarBooks.value = true
+
+                        // Call API to get similar books
+                        const response = await fetch('/api/similar-books', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ bookDescription })
+                        })
+
+                        if (!response.ok) throw new Error('Failed to get similar books')
+                        const newBooks = await response.json();
+
+                        const likedResponse = await fetch('/api/liked-books', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ itemId })
+                        })
+
+                        const newLikedBook = await likedResponse.json();
+
+                        similarBooks.value = [...similarBooks.value, ...newBooks];
+                        likedBooks.value = [...likedBooks.value, newLikedBook];
+                    } catch (error) {
+                        alert(error.message)
+                    } finally {
+                        loadingSimilarBooks.value = false
+                    }
+                }
+
+                async function dislikeBook(book) {
+                    try {
+                        // Get similar books to the disliked one
+                        const response = await fetch('/api/similar-books', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ bookDescription: book['Book-Description'] })
+                        })
+                        
+                        if (!response.ok) throw new Error('Failed to get similar books')
+                        const similarBooks = await response.json()
+                        
+                        // Store the disliked book and its similar books (limit to 3 similar books)
+                        dislikedBooks.value.push({
+                            book: book,
+                            similarBooks: similarBooks
+                        })
+                        
+                        
+                    } catch (error) {
+                        alert(error.message)
+                    }
+                }
+
+                async function startEvaluation() {
+                    showEvaluation.value = true
+                    // Initialize evaluation ratings with empty values
+                    evaluationRatings.value = {}
+                    likedBooks.value.forEach(book => {
+                        evaluationRatings.value[book.itemId] = 0
+                    })
+                }
+
+                async function submitEvaluation() {
+                try {
+                    loadingEvaluation.value = true;
+
+                    // Prepare data for the API
+                    const evaluationData = {
+                        ratings: Object.entries(evaluationRatings.value)
+                            .filter(([_, rating]) => rating > 0) // Only include rated books
+                            .map(([itemId, rating]) => ({
+                                itemId: String(itemId), // Ensure itemId is a string
+                                actualRating: rating,
+                                
+                            })),
+                        likedBooks: likedBooks.value,
+                        initialRatings: userRatings
+                    };
+
+                    // Debug: Log data being sent to the backend
+                    console.log("Evaluation Data:", evaluationData);
+
+                    // Send to backend for metrics calculation
+                    const response = await fetch('/api/evaluate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(evaluationData)
+                    });
+
+                    if (!response.ok) throw new Error('Failed to calculate metrics');
+                    evaluationMetrics.value = await response.json();
+                } catch (error) {
+                    alert(error.message);
+                } finally {
+                    loadingEvaluation.value = false;
+                }
+            }
+                function updateEvaluationRating(itemId, rating) {
+                    itemId = String(itemId);
+                    evaluationRatings.value[itemId] = rating
+                }
+
+                function getEvaluationRating(itemId) {
+                    itemId = String(itemId);
+                    return evaluationRatings.value[itemId] || 0
+                }
+
+
+               
+                async function searchBooks() {
+                    if (!searchQuery.value.trim()) return
+                    
+                    try {
+                        loadingSearch.value = true;
+                        hasSearched.value = true;
+                        const response = await fetch('/api/search-books', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ query: searchQuery.value })
+                        })
+
+                        if (!response.ok) throw new Error('Failed to search books')
+                        searchResults.value = await response.json()
+                       
+                    } catch (error) {
+                        alert(error.message)
+                    } finally {
+                        loadingSearch.value = false
+                    }
+                }
+
+                onMounted(() => { })
+
+                return {
+                    age,
+                    location,
+                    selectedBooks,
+                    recommendations,
+                    userRatings,
+                    ratingsCount,
+                    loadingInitial,
+                    loadingRecommendations,
+                    loadingSimilarBooks,
+                    similarBooks,
+                    likedBooks,
+                    getInitialSuggestions,
+                    getRecommendations,
+                    updateRating,
+                    getRating,
+                    resetAll,
+                    likeBook,
+                    dislikeBook,
+                    isBookLiked,
+                    dislikedBooks,
+                    filteredRecommendations,
+                    filteredSimilarBooks,
+                    excludedItemIds,
+                    showEvaluation, // evaluation state
+                    evaluationRatings,
+                    evaluationMetrics,
+                    loadingEvaluation,
+                    startEvaluation,
+                    submitEvaluation,
+                    updateEvaluationRating,
+                    getEvaluationRating,
+                    searchQuery,
+                    searchResults,
+                    loadingSearch,
+                    searchBooks,
+                    hasSearched
+                }
+            }
+        })
+
+        // Set Vue template delimiters
+        app.config.compilerOptions.delimiters = ['[[', ']]']
+
+        app.mount('#app')
+    </script>
+
+    <style>
+        /* evalution */
+        .evaluation-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+        .evaluation-item {
+            margin-bottom: 15px;
+        }
+
+        .rating-stars span {
+            font-size: 24px;
+            color: #ccc;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .rating-stars span.active {
+            color: gold;
+        }
+
+        .metrics-results {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        .evaluation-btn, .submit-evaluation {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+
+        .evaluation-btn:hover, .submit-evaluation:hover {
+            background-color: #45a049;
+        }
+
+        .star {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .star:hover {
+            color: #ff3860 !important;
+        }
+
+        .has-text-danger {
+            color: #ff3860 !important;
+        }
+
+        .card {
+            transition: transform 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .image.is-4by3 img {
+            object-fit: cover;
+        }
+
+        .notification {
+            margin-bottom: 2rem;
+        }
+
+        .navbar {
+            margin-bottom: 2rem;
+        }
+    </style>
+</body>
+
+</html>
